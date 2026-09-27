@@ -1,293 +1,183 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { Save } from 'lucide-react'
+import { Modal, Button, Field, Input, Select, Textarea, FormSection, ErrorText } from './ui'
+import { api } from '../lib/api'
+import { friendlyError } from '../lib/errors'
+import { useToast } from './Toast'
 
-export default function VehicleForm({ vehicleId, vehicle, onClose, onCreate, onUpdate }) {
-  const [formData, setFormData] = useState({
-    nume_model: '',
-    inmatriculare: '',
-    vin: '',
-    capacitate_pasageri: 5,
-    tip_combustibil: 'Benzina',
-    consum: 0,
-    pret_achizitie: 0,
-    data_achizitie: '',
-    km_achizitie: 0,
-    km_actuali: 0,
-    status: 'Disponibil',
-    locatie: ''
-  })
+const EMPTY = {
+  nume_model: '',
+  inmatriculare: '',
+  vin: '',
+  an_fabricatie: '',
+  culoare: '',
+  tip_combustibil: 'Benzină',
+  cutie_viteze: 'Manuală',
+  capacitate_pasageri: 5,
+  km_actuali: '',
+  tarif_zilnic: '',
+  status: 'Disponibil',
+  rca_expira: '',
+  itp_expira: '',
+  rovinieta_expira: '',
+  casco_expira: '',
+  observatii: '',
+}
 
-  const [error, setError] = useState(null)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (vehicle) {
-      setFormData(vehicle)
-    }
-  }, [vehicle])
-
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'capacitate_pasageri' || name === 'consum' || name === 'pret_achizitie' || name === 'km_achizitie' || name === 'km_actuali'
-        ? parseFloat(value) || 0
-        : value
-    }))
+function toForm(vehicle) {
+  if (!vehicle) return EMPTY
+  const out = { ...EMPTY }
+  for (const k of Object.keys(EMPTY)) {
+    const v = vehicle[k]
+    out[k] = v === null || v === undefined ? '' : k.endsWith('_expira') ? String(v).slice(0, 10) : v
   }
+  return out
+}
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+export default function VehicleForm({ vehicle, defaultTariff, onClose, onSaved }) {
+  const toast = useToast()
+  const [form, setForm] = useState(() => toForm(vehicle))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const rented = vehicle?.status === 'În chirie'
+
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+
+  const submit = async (e) => {
+    e?.preventDefault()
     setError(null)
-    setLoading(true)
-
+    if (!form.nume_model.trim() || !form.inmatriculare.trim()) {
+      setError('Completează marca/modelul și numărul de înmatriculare.')
+      return
+    }
+    const year = Number(form.an_fabricatie)
+    if (form.an_fabricatie && (year < 1980 || year > new Date().getFullYear() + 1)) {
+      setError('Anul de fabricație nu este valid.')
+      return
+    }
+    setSaving(true)
     try {
-      if (vehicleId) {
-        await onUpdate(vehicleId, formData)
-      } else {
-        await onCreate(formData)
-      }
-      onClose()
+      const data = { ...form }
+      if (rented) delete data.status
+      if (vehicle) await api.updateVehicle(vehicle.id, data)
+      else await api.createVehicle(data)
+      toast(vehicle ? 'Vehicul actualizat' : 'Vehicul adăugat')
+      onSaved()
     } catch (err) {
-      setError(err.message || 'Eroare la salvarea vehiculului')
+      setError(friendlyError(err))
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-900">
-            {vehicleId ? 'Editare Vehicul' : 'Adaugă Vehicul Nou'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              {error}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Model */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Model Vehicul *
-              </label>
-              <input
-                type="text"
-                name="nume_model"
-                value={formData.nume_model}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                placeholder="ex: Toyota Camry 2020"
+    <Modal
+      open
+      onClose={onClose}
+      title={vehicle ? 'Editează vehicul' : 'Adaugă vehicul'}
+      subtitle={vehicle ? `${vehicle.nume_model} · ${vehicle.inmatriculare}` : 'Datele mașinii și documentele'}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Anulează
+          </Button>
+          <Button icon={Save} loading={saving} onClick={submit}>
+            Salvează
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={submit} className="space-y-7">
+        <FormSection title="Identificare">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Marcă și model" required>
+              <Input value={form.nume_model} onChange={set('nume_model')} placeholder="ex: Dacia Logan 1.0 TCe" />
+            </Field>
+            <Field label="Nr. înmatriculare" required>
+              <Input
+                value={form.inmatriculare}
+                onChange={(e) => setForm((f) => ({ ...f, inmatriculare: e.target.value.toUpperCase() }))}
+                placeholder="ex: BH 12 SIS"
               />
+            </Field>
+            <Field label="Serie șasiu (VIN)">
+              <Input value={form.vin} onChange={set('vin')} maxLength={17} />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="An fabricație">
+                <Input type="number" inputMode="numeric" value={form.an_fabricatie} onChange={set('an_fabricatie')} />
+              </Field>
+              <Field label="Culoare">
+                <Input value={form.culoare} onChange={set('culoare')} />
+              </Field>
             </div>
-
-            {/* Registration */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Înmatriculare *
-              </label>
-              <input
-                type="text"
-                name="inmatriculare"
-                value={formData.inmatriculare}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                placeholder="ex: B 123 ABC"
-              />
-            </div>
-
-            {/* VIN */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                VIN
-              </label>
-              <input
-                type="text"
-                name="vin"
-                value={formData.vin}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                placeholder="ex: WVW000000000000000"
-              />
-            </div>
-
-            {/* Capacity */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Capacitate Pasageri
-              </label>
-              <input
-                type="number"
-                name="capacitate_pasageri"
-                value={formData.capacitate_pasageri}
-                onChange={handleChange}
-                min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            {/* Fuel Type */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Tip Combustibil
-              </label>
-              <select
-                name="tip_combustibil"
-                value={formData.tip_combustibil}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option>Benzina</option>
-                <option>Diesel</option>
-                <option>Hibrid</option>
-                <option>Electric</option>
-              </select>
-            </div>
-
-            {/* Consumption */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Consum (L/100km)
-              </label>
-              <input
-                type="number"
-                name="consum"
-                value={formData.consum}
-                onChange={handleChange}
-                step="0.1"
-                min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            {/* Purchase Price */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Preț Achiziție (RON)
-              </label>
-              <input
-                type="number"
-                name="pret_achizitie"
-                value={formData.pret_achizitie}
-                onChange={handleChange}
-                min="0"
-                step="100"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            {/* Purchase Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Data Achiziției
-              </label>
-              <input
-                type="date"
-                name="data_achizitie"
-                value={formData.data_achizitie}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            {/* KM at Purchase */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                KM la Achiziție
-              </label>
-              <input
-                type="number"
-                name="km_achizitie"
-                value={formData.km_achizitie}
-                onChange={handleChange}
-                min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            {/* Current KM */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                KM Actuali
-              </label>
-              <input
-                type="number"
-                name="km_actuali"
-                value={formData.km_actuali}
-                onChange={handleChange}
-                min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            {/* Status */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Status *
-              </label>
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option>Disponibil</option>
-                <option>În chirie</option>
-                <option>Service</option>
-                <option>Sold</option>
-              </select>
-            </div>
-
-            {/* Location */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Locație
-              </label>
-              <input
-                type="text"
-                name="locatie"
-                value={formData.locatie}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                placeholder="ex: Garaj 1"
-              />
+            <Field label="Combustibil">
+              <Select value={form.tip_combustibil} onChange={set('tip_combustibil')}>
+                {['Benzină', 'Motorină', 'Hibrid', 'Electric', 'GPL'].map((o) => (
+                  <option key={o}>{o}</option>
+                ))}
+              </Select>
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Cutie viteze">
+                <Select value={form.cutie_viteze} onChange={set('cutie_viteze')}>
+                  <option>Manuală</option>
+                  <option>Automată</option>
+                </Select>
+              </Field>
+              <Field label="Locuri">
+                <Input type="number" inputMode="numeric" min={1} value={form.capacitate_pasageri} onChange={set('capacitate_pasageri')} />
+              </Field>
             </div>
           </div>
+        </FormSection>
 
-          {/* Buttons */}
-          <div className="flex gap-2 justify-end pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
-            >
-              Anulare
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-            >
-              {loading ? 'Se salvează...' : (vehicleId ? 'Actualizează' : 'Adaugă Vehicul')}
-            </button>
+        <FormSection
+          title="Documente"
+          description="Primești alertă cu 30 de zile și cu 7 zile înainte de expirare."
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="RCA valabil până la">
+              <Input type="date" value={form.rca_expira} onChange={set('rca_expira')} />
+            </Field>
+            <Field label="ITP valabil până la">
+              <Input type="date" value={form.itp_expira} onChange={set('itp_expira')} />
+            </Field>
+            <Field label="Rovinietă valabilă până la">
+              <Input type="date" value={form.rovinieta_expira} onChange={set('rovinieta_expira')} />
+            </Field>
+            <Field label="CASCO valabil până la" hint="Opțional">
+              <Input type="date" value={form.casco_expira} onChange={set('casco_expira')} />
+            </Field>
           </div>
-        </form>
-      </div>
-    </div>
+        </FormSection>
+
+        <FormSection title="Exploatare">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="Kilometraj actual">
+              <Input type="number" inputMode="numeric" min={0} value={form.km_actuali} onChange={set('km_actuali')} />
+            </Field>
+            <Field label="Tarif zilnic (RON)" hint={`Gol = tarif implicit (${defaultTariff} RON)`}>
+              <Input type="number" inputMode="decimal" min={0} value={form.tarif_zilnic} onChange={set('tarif_zilnic')} />
+            </Field>
+            <Field label="Status">
+              {rented ? (
+                <Input value="În chirie" disabled />
+              ) : (
+                <Select value={form.status} onChange={set('status')}>
+                  <option>Disponibil</option>
+                  <option>Service</option>
+                </Select>
+              )}
+            </Field>
+          </div>
+          <Field label="Observații">
+            <Textarea value={form.observatii} onChange={set('observatii')} placeholder="Dotări, daune existente, note interne…" />
+          </Field>
+        </FormSection>
+        <ErrorText>{error}</ErrorText>
+        <button type="submit" className="hidden" />
+      </form>
+    </Modal>
   )
 }
