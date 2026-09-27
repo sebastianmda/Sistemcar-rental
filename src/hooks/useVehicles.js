@@ -24,6 +24,7 @@ export const useVehicles = () => {
     fetchVehicles()
 
     const subscription = supabase
+      .channel('vehicles-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'vehicles' },
