@@ -11,6 +11,7 @@ export function DataProvider({ children }) {
     clients: [],
     rentals: [],
     settings: { tarif_zilnic_default: 150 },
+    photoUrls: {},
     loading: true,
     error: null,
   })
@@ -23,7 +24,14 @@ export function DataProvider({ children }) {
         api.listRentals(),
         api.getSettings(),
       ])
-      setState({ vehicles, clients, rentals, settings, loading: false, error: null })
+      // profile photos: private files need temporary links; a failure here must not block the app
+      let photoUrls = {}
+      try {
+        photoUrls = await api.signedUrls(vehicles.map((v) => v.foto_profil))
+      } catch (err) {
+        console.warn('Poze profil indisponibile', err)
+      }
+      setState({ vehicles, clients, rentals, settings, photoUrls, loading: false, error: null })
     } catch (err) {
       console.error(err)
       setState((s) => ({ ...s, loading: false, error: friendlyError(err) }))

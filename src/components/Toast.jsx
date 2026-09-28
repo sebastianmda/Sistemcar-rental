@@ -8,14 +8,14 @@ export function ToastProvider({ children }) {
 
   const show = useCallback((message, tone = 'success') => {
     const id = Math.random().toString(36).slice(2)
-    setToasts((t) => [...t, { id, message, tone }])
+    setToasts((t) => [...t.slice(-1), { id, message, tone }]) // max 2 visible
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === 'error' ? 7000 : 3500)
   }, [])
 
   return (
     <ToastContext.Provider value={show}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 top-3 z-[60] flex flex-col items-center gap-2 px-3">
+      <div className="pointer-events-none fixed inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] flex flex-col items-center gap-2 px-3">
         {toasts.map((t) => (
           <div
             key={t.id}

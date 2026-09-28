@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Car, Gauge, Fuel, KeyRound } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { Plus, Pencil, Trash2, Car, Gauge, Fuel, KeyRound, Camera, Loader2 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/Toast'
 import { api } from '../lib/api'
@@ -8,11 +8,64 @@ import { fmtKm, fmtMoney } from '../lib/format'
 import { Button, Card, PageHeader, SearchInput, EmptyState, Plate, cx } from '../components/ui'
 import { DocChips, VehicleStatus } from '../components/StatusBits'
 import VehicleForm from '../components/VehicleForm'
+import { PhotoInput } from '../components/Media'
 
 const FILTERS = ['Toate', 'Disponibil', 'În chirie', 'Service']
 
+function VehiclePhoto({ vehicle, url, onChanged }) {
+  const toast = useToast()
+  const inputRef = useRef(null)
+  const [busy, setBusy] = useState(false)
+
+  const upload = async (files) => {
+    setBusy(true)
+    try {
+      await api.setVehicleProfile(vehicle, files[0])
+      toast('Poză de profil salvată')
+      await onChanged()
+    } catch (err) {
+      toast(friendlyError(err), 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="relative aspect-[16/9] overflow-hidden rounded-t-xl bg-gradient-to-br from-slate-100 to-slate-200">
+      {url ? (
+        <img src={url} alt={vehicle.nume_model} loading="lazy" className="h-full w-full object-cover" />
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="flex h-full w-full flex-col items-center justify-center gap-1 text-slate-400 hover:text-blue-600"
+        >
+          <Car className="h-10 w-10" />
+          <span className="text-xs font-medium">Adaugă poză de profil</span>
+        </button>
+      )}
+      {url && (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="absolute bottom-2 right-2 rounded-full bg-slate-900/70 p-2 text-white hover:bg-slate-900"
+          aria-label="Schimbă poza"
+        >
+          <Camera className="h-4 w-4" />
+        </button>
+      )}
+      {busy && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+          <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+        </div>
+      )}
+      <PhotoInput inputRef={inputRef} multiple={false} onFiles={upload} />
+    </div>
+  )
+}
+
 export default function Fleet({ navigate }) {
-  const { vehicles, defaultTariff, reload } = useData()
+  const { vehicles, defaultTariff, reload, photoUrls } = useData()
   const toast = useToast()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('Toate')
@@ -89,7 +142,9 @@ export default function Fleet({ navigate }) {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visible.map((v) => (
-            <Card key={v.id} className="flex flex-col p-4">
+            <Card key={v.id} className="flex flex-col">
+              <VehiclePhoto vehicle={v} url={photoUrls[v.foto_profil]} onChanged={reload} />
+              <div className="flex flex-1 flex-col p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="truncate font-semibold text-slate-900">{v.nume_model}</h3>
@@ -117,7 +172,7 @@ export default function Fleet({ navigate }) {
                 <DocChips vehicle={v} />
               </div>
 
-              <div className="mt-4 flex gap-2">
+              <div className="mt-auto flex gap-2 pt-4">
                 {v.status === 'Disponibil' && (
                   <Button size="sm" variant="success" icon={KeyRound} onClick={() => navigate('rentals', { newForVehicle: v.id })}>
                     Predă
@@ -128,6 +183,7 @@ export default function Fleet({ navigate }) {
                 </Button>
                 <Button size="sm" variant="dangerGhost" icon={Trash2} onClick={() => remove(v)} aria-label="Șterge" />
               </div>
+              </div>
             </Card>
           ))}
         </div>
@@ -136,6 +192,7 @@ export default function Fleet({ navigate }) {
       {editing && (
         <VehicleForm
           vehicle={editing === 'new' ? null : editing}
+          photoUrl={editing === 'new' ? null : photoUrls[editing.foto_profil]}
           defaultTariff={defaultTariff}
           onClose={() => setEditing(null)}
           onSaved={() => {

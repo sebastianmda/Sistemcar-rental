@@ -87,8 +87,8 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
       setProgress('Se salvează predarea…')
       const rental = await api.createRental({ ...form, client_id: cid })
       if (files.length) {
-        const failed = await api.uploadMany(rental.id, 'predare', files, (i, n) => setProgress(`Se încarcă fișierele ${i}/${n}…`))
-        if (failed.length) toast(`${failed.length} fișier(e) nu s-au încărcat. Le poți adăuga din detaliile închirierii.`, 'error')
+        const failed = await api.uploadMany(rental.id, 'predare', files, (i, n) => setProgress(`Se încarcă pozele ${i}/${n}…`))
+        if (failed.length) toast(`${failed.length} poză(e) nu s-au încărcat. Le poți adăuga din detaliile închirierii.`, 'error')
       }
       toast('Mașina a fost predată')
       onDone(rental)
@@ -223,7 +223,7 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
           </Field>
         </FormSection>
 
-        <FormSection title="5. Foto / video la predare" description="Fotografiază mașina din toate unghiurile, bordul (km, combustibil) și daunele existente.">
+        <FormSection title="5. Poze la predare" description="Fotografiază mașina din toate unghiurile, bordul (km, combustibil) și daunele existente.">
           <MediaPicker files={files} onChange={setFiles} />
         </FormSection>
 

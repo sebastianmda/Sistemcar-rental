@@ -50,8 +50,8 @@ export default function ReturnForm({ rental, onClose, onDone }) {
       setProgress('Se salvează primirea…')
       await api.finishRental(rental, form)
       if (files.length) {
-        const failed = await api.uploadMany(rental.id, 'primire', files, (i, n) => setProgress(`Se încarcă fișierele ${i}/${n}…`))
-        if (failed.length) toast(`${failed.length} fișier(e) nu s-au încărcat. Le poți adăuga din detaliile închirierii.`, 'error')
+        const failed = await api.uploadMany(rental.id, 'primire', files, (i, n) => setProgress(`Se încarcă pozele ${i}/${n}…`))
+        if (failed.length) toast(`${failed.length} poză(e) nu s-au încărcat. Le poți adăuga din detaliile închirierii.`, 'error')
       }
       toast('Mașina a fost primită')
       onDone()
@@ -120,7 +120,7 @@ export default function ReturnForm({ rental, onClose, onDone }) {
           </label>
         </FormSection>
 
-        <FormSection title="Foto / video la primire">
+        <FormSection title="Poze la primire">
           <MediaPicker files={files} onChange={setFiles} />
         </FormSection>
 

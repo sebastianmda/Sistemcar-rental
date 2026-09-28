@@ -126,17 +126,18 @@ export function Modal({ open, title, subtitle, onClose, footer, size = 'lg', chi
 
   if (!open) return null
   const widths = { md: 'sm:max-w-lg', lg: 'sm:max-w-2xl', xl: 'sm:max-w-4xl' }
+  // phone: full screen (no dimmed strip on top, header always visible); desktop: centered window
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex justify-center bg-white sm:items-center sm:bg-slate-900/50 sm:p-4 sm:backdrop-blur-sm">
       <div
         role="dialog"
         aria-modal="true"
         className={cx(
-          'flex max-h-[95vh] w-full flex-col rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl',
+          'flex h-[100dvh] w-full flex-col bg-white sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:shadow-2xl',
           widths[size]
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:py-4">
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-slate-900">{title}</h2>
             {subtitle && <p className="mt-0.5 truncate text-sm text-slate-500">{subtitle}</p>}
@@ -145,14 +146,14 @@ export function Modal({ open, title, subtitle, onClose, footer, size = 'lg', chi
             type="button"
             onClick={onClose}
             aria-label="Închide"
-            className="-mr-2 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="-mr-2 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           >
-            <X className="h-5 w-5" />
+            <X className="h-6 w-6 sm:h-5 sm:w-5" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-5">{children}</div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
         {footer && (
-          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {footer}
           </div>
         )}

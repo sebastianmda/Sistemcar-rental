@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { compressImage, mediaType, MAX_FILE_MB } from './media'
+import { compressImage, isImage, MAX_FILE_MB } from './media'
 
 const BUCKET = 'rental-media'
 
@@ -168,39 +168,43 @@ export const api = {
     )
   },
 
-  // ---------- photos / videos ----------
-  async listMedia(rentalId) {
-    const rows = await run(
-      supabase.from('rental_media').select('*').eq('rental_id', rentalId).order('created_at', { ascending: true })
-    )
-    if (!rows.length) return []
-    const { data: signed, error } = await supabase.storage.from(BUCKET).createSignedUrls(rows.map((r) => r.path), 60 * 60)
+  // ---------- photos ----------
+  async signedUrls(paths) {
+    const list = [...new Set(paths.filter(Boolean))]
+    if (!list.length) return {}
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(list, 60 * 60)
     if (error) throw error
-    const urls = Object.fromEntries((signed || []).map((s) => [s.path, s.signedUrl]))
-    return rows.map((r) => ({ ...r, url: urls[r.path] || null }))
+    return Object.fromEntries((data || []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]))
   },
 
-  async uploadMedia(rentalId, etapa, originalFile) {
-    const tip = mediaType(originalFile)
-    const file = tip === 'foto' ? await compressImage(originalFile) : originalFile
-    if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      throw new Error(`„${originalFile.name}” are peste ${MAX_FILE_MB} MB. Filmează clipuri mai scurte.`)
-    }
-    const ext = (file.name.split('.').pop() || (tip === 'video' ? 'mp4' : 'jpg')).toLowerCase()
-    const path = `${rentalId}/${etapa}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-    const { error: upErr } = await supabase.storage
+  // compresses and uploads one photo, returns its storage path
+  async uploadPhoto(folder, originalFile) {
+    if (!isImage(originalFile)) throw new Error(`„${originalFile.name}” nu este o fotografie.`)
+    const file = await compressImage(originalFile)
+    if (file.size > MAX_FILE_MB * 1024 * 1024) throw new Error(`„${originalFile.name}” are peste ${MAX_FILE_MB} MB.`)
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+    const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const { error } = await supabase.storage
       .from(BUCKET)
-      .upload(path, file, { contentType: file.type || undefined, upsert: false })
-    if (upErr) throw upErr
-    return run(supabase.from('rental_media').insert({ rental_id: rentalId, etapa, tip, path }).select().single())
+      .upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false })
+    if (error) throw error
+    return path
   },
 
-  async uploadMany(rentalId, etapa, files, onProgress) {
+  async removeFiles(paths) {
+    const list = paths.filter(Boolean)
+    if (!list.length) return
+    const { error } = await supabase.storage.from(BUCKET).remove(list)
+    if (error) throw error
+  },
+
+  // uploads many files one by one; returns the ones that failed
+  async uploadEach(files, uploadOne, onProgress) {
     const failed = []
     for (let i = 0; i < files.length; i++) {
       onProgress?.(i + 1, files.length)
       try {
-        await api.uploadMedia(rentalId, etapa, files[i])
+        await uploadOne(files[i])
       } catch (err) {
         failed.push({ file: files[i], err })
       }
@@ -208,9 +212,60 @@ export const api = {
     return failed
   },
 
+  // --- rental photos (predare / primire)
+  async listMedia(rentalId) {
+    const rows = await run(
+      supabase.from('rental_media').select('*').eq('rental_id', rentalId).order('created_at', { ascending: true })
+    )
+    const urls = await api.signedUrls(rows.map((r) => r.path))
+    return rows.map((r) => ({ ...r, url: urls[r.path] || null }))
+  },
+
+  async uploadMedia(rentalId, etapa, file) {
+    const path = await api.uploadPhoto(`${rentalId}/${etapa}`, file)
+    return run(supabase.from('rental_media').insert({ rental_id: rentalId, etapa, tip: 'foto', path }).select().single())
+  },
+
+  uploadMany(rentalId, etapa, files, onProgress) {
+    return api.uploadEach(files, (f) => api.uploadMedia(rentalId, etapa, f), onProgress)
+  },
+
   async deleteMedia(item) {
-    const { error } = await supabase.storage.from(BUCKET).remove([item.path])
-    if (error) throw error
+    await api.removeFiles([item.path])
     return run(supabase.from('rental_media').delete().eq('id', item.id))
+  },
+
+  // --- vehicle profile photo
+  async setVehicleProfile(vehicle, file) {
+    const path = await api.uploadPhoto(`vehicles/${vehicle.id}/profil`, file)
+    await run(supabase.from('vehicles').update({ foto_profil: path }).eq('id', vehicle.id))
+    if (vehicle.foto_profil && vehicle.foto_profil !== path) {
+      api.removeFiles([vehicle.foto_profil]).catch(() => {}) // old photo; not critical if it stays
+    }
+    return path
+  },
+
+  async removeVehicleProfile(vehicle) {
+    await run(supabase.from('vehicles').update({ foto_profil: null }).eq('id', vehicle.id))
+    api.removeFiles([vehicle.foto_profil]).catch(() => {})
+  },
+
+  // --- vehicle gallery (documente / mașină / bord / altele)
+  async listVehicleMedia(vehicleId) {
+    const rows = await run(
+      supabase.from('vehicle_media').select('*').eq('vehicle_id', vehicleId).order('created_at', { ascending: true })
+    )
+    const urls = await api.signedUrls(rows.map((r) => r.path))
+    return rows.map((r) => ({ ...r, url: urls[r.path] || null }))
+  },
+
+  async uploadVehicleMedia(vehicleId, categorie, file) {
+    const path = await api.uploadPhoto(`vehicles/${vehicleId}/${categorie}`, file)
+    return run(supabase.from('vehicle_media').insert({ vehicle_id: vehicleId, categorie, path }).select().single())
+  },
+
+  async deleteVehicleMedia(item) {
+    await api.removeFiles([item.path])
+    return run(supabase.from('vehicle_media').delete().eq('id', item.id))
   },
 }

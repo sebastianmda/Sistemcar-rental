@@ -138,11 +138,11 @@ export default function RentalDetail({ rental, onClose, onReturn, onChanged }) {
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
-              <h4 className="mb-2 text-sm font-semibold text-slate-700">Foto / video la predare ({byStage('predare').length})</h4>
+              <h4 className="mb-2 text-sm font-semibold text-slate-700">Poze la predare ({byStage('predare').length})</h4>
               <MediaGallery rentalId={rental.id} etapa="predare" items={byStage('predare')} onChanged={loadMedia} />
             </div>
             <div>
-              <h4 className="mb-2 text-sm font-semibold text-slate-700">Foto / video la primire ({byStage('primire').length})</h4>
+              <h4 className="mb-2 text-sm font-semibold text-slate-700">Poze la primire ({byStage('primire').length})</h4>
               {rental.status === 'activa' ? (
                 <p className="text-sm text-slate-500">Se adaugă la primirea mașinii.</p>
               ) : (

@@ -1,9 +1,18 @@
-import { useState } from 'react'
-import { Save } from 'lucide-react'
-import { Modal, Button, Field, Input, Select, Textarea, FormSection, ErrorText } from './ui'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Save, Camera, Car, Trash2 } from 'lucide-react'
+import { Modal, Button, Field, Input, Select, Textarea, FormSection, ErrorText, Tabs } from './ui'
 import { api } from '../lib/api'
 import { friendlyError } from '../lib/errors'
 import { useToast } from './Toast'
+import { PhotoGrid, PhotoInput, UploadProgress, useLocalPreviews } from './Media'
+
+export const PHOTO_CATEGORIES = [
+  { value: 'document', label: 'Documente', hint: 'Talon, poliță RCA, ITP, rovinietă, CASCO' },
+  { value: 'masina', label: 'Mașină', hint: 'Exterior și interior, eventuale daune' },
+  { value: 'bord', label: 'Bord / km', hint: 'Kilometraj, martori bord' },
+  { value: 'altele', label: 'Altele', hint: 'Orice altceva util' },
+]
+const NO_PENDING = { document: [], masina: [], bord: [], altele: [] }
 
 const EMPTY = {
   nume_model: '',
@@ -34,12 +43,47 @@ function toForm(vehicle) {
   return out
 }
 
-export default function VehicleForm({ vehicle, defaultTariff, onClose, onSaved }) {
+export default function VehicleForm({ vehicle, photoUrl, defaultTariff, onClose, onSaved }) {
   const toast = useToast()
   const [form, setForm] = useState(() => toForm(vehicle))
   const [saving, setSaving] = useState(false)
+  const [progress, setProgress] = useState(null)
   const [error, setError] = useState(null)
   const rented = vehicle?.status === 'În chirie'
+
+  // profile photo
+  const profileInput = useRef(null)
+  const [profileFile, setProfileFile] = useState(null)
+  const [profileRemoved, setProfileRemoved] = useState(false)
+  const profileFiles = useMemo(() => (profileFile ? [profileFile] : []), [profileFile])
+  const [profilePreview] = useLocalPreviews(profileFiles)
+  const shownProfile = profileFile ? profilePreview : profileRemoved ? null : photoUrl
+
+  // gallery
+  const [category, setCategory] = useState('document')
+  const [saved, setSaved] = useState([])
+  const [pending, setPending] = useState(NO_PENDING)
+  const [savedVehicle, setSavedVehicle] = useState(vehicle) // after a first save of a new vehicle
+
+  useEffect(() => {
+    if (!vehicle) return
+    api
+      .listVehicleMedia(vehicle.id)
+      .then(setSaved)
+      .catch((err) => setError(friendlyError(err)))
+  }, [vehicle])
+
+  const deleteSaved = async (item) => {
+    if (!confirm('Ștergi această poză?')) return
+    try {
+      await api.deleteVehicleMedia(item)
+      setSaved((list) => list.filter((x) => x.id !== item.id))
+    } catch (err) {
+      toast(friendlyError(err), 'error')
+    }
+  }
+
+  const pendingCount = Object.values(pending).reduce((n, list) => n + list.length, 0)
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
@@ -59,21 +103,48 @@ export default function VehicleForm({ vehicle, defaultTariff, onClose, onSaved }
     try {
       const data = { ...form }
       if (rented) delete data.status
-      if (vehicle) await api.updateVehicle(vehicle.id, data)
-      else await api.createVehicle(data)
+      setProgress('Se salvează vehiculul…')
+      const target = savedVehicle
+        ? await api.updateVehicle(savedVehicle.id, data)
+        : await api.createVehicle(data)
+      setSavedVehicle(target) // a retry after a photo error won't create a duplicate vehicle
+
+      if (profileFile) {
+        setProgress('Se încarcă poza de profil…')
+        await api.setVehicleProfile(target, profileFile)
+        setProfileFile(null)
+      } else if (profileRemoved && target.foto_profil) {
+        await api.removeVehicleProfile(target)
+      }
+
+      const queue = PHOTO_CATEGORIES.flatMap((c) => pending[c.value].map((file) => ({ file, categorie: c.value })))
+      const failed = await api.uploadEach(
+        queue,
+        (q) => api.uploadVehicleMedia(target.id, q.categorie, q.file),
+        (i, n) => setProgress(`Se încarcă pozele ${i}/${n}…`)
+      )
+      if (failed.length) {
+        const left = { document: [], masina: [], bord: [], altele: [] }
+        failed.forEach((f) => left[f.file.categorie].push(f.file.file))
+        setPending(left)
+        api.listVehicleMedia(target.id).then(setSaved).catch(() => {})
+        setError(`${failed.length} poză(e) nu s-au încărcat: ${friendlyError(failed[0].err)}. Apasă din nou Salvează.`)
+        return
+      }
       toast(vehicle ? 'Vehicul actualizat' : 'Vehicul adăugat')
       onSaved()
     } catch (err) {
       setError(friendlyError(err))
     } finally {
       setSaving(false)
+      setProgress(null)
     }
   }
 
   return (
     <Modal
       open
-      onClose={onClose}
+      onClose={saving ? undefined : onClose}
       title={vehicle ? 'Editează vehicul' : 'Adaugă vehicul'}
       subtitle={vehicle ? `${vehicle.nume_model} · ${vehicle.inmatriculare}` : 'Datele mașinii și documentele'}
       footer={
@@ -82,12 +153,58 @@ export default function VehicleForm({ vehicle, defaultTariff, onClose, onSaved }
             Anulează
           </Button>
           <Button icon={Save} loading={saving} onClick={submit}>
-            Salvează
+            {pendingCount ? `Salvează (+${pendingCount} poze)` : 'Salvează'}
           </Button>
         </>
       }
     >
       <form onSubmit={submit} className="space-y-7">
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => profileInput.current?.click()}
+            className="relative flex h-24 w-32 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-200"
+          >
+            {shownProfile ? (
+              <img src={shownProfile} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <Car className="h-10 w-10 text-slate-300" />
+            )}
+            <span className="absolute bottom-1 right-1 rounded-full bg-slate-900/70 p-1.5 text-white">
+              <Camera className="h-4 w-4" />
+            </span>
+          </button>
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-slate-700">Poză de profil</div>
+            <p className="text-xs text-slate-500">Apare pe cartonașul mașinii din Flotă.</p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" icon={Camera} onClick={() => profileInput.current?.click()}>
+                {shownProfile ? 'Schimbă' : 'Alege poza'}
+              </Button>
+              {shownProfile && (
+                <Button
+                  size="sm"
+                  variant="dangerGhost"
+                  icon={Trash2}
+                  onClick={() => {
+                    setProfileFile(null)
+                    setProfileRemoved(true)
+                  }}
+                  aria-label="Scoate poza"
+                />
+              )}
+            </div>
+          </div>
+          <PhotoInput
+            inputRef={profileInput}
+            multiple={false}
+            onFiles={(files) => {
+              setProfileFile(files[0])
+              setProfileRemoved(false)
+            }}
+          />
+        </div>
+
         <FormSection title="Identificare">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Marcă și model" required>
@@ -152,6 +269,28 @@ export default function VehicleForm({ vehicle, defaultTariff, onClose, onSaved }
           </div>
         </FormSection>
 
+        <FormSection title="Fotografii" description="Pozele noi se salvează când apeși Salvează.">
+          <div className="overflow-x-auto">
+            <Tabs
+              value={category}
+              onChange={setCategory}
+              tabs={PHOTO_CATEGORIES.map((c) => {
+                const n = saved.filter((x) => x.categorie === c.value).length + pending[c.value].length
+                return { value: c.value, label: n ? `${c.label} (${n})` : c.label }
+              })}
+            />
+          </div>
+          <p className="text-xs text-slate-500">{PHOTO_CATEGORIES.find((c) => c.value === category).hint}</p>
+          <PhotoGrid
+            key={category}
+            items={saved.filter((x) => x.categorie === category)}
+            pending={pending[category]}
+            onAddFiles={(files) => setPending((p) => ({ ...p, [category]: [...p[category], ...files] }))}
+            onRemovePending={(j) => setPending((p) => ({ ...p, [category]: p[category].filter((_, k) => k !== j) }))}
+            onDeleteItem={deleteSaved}
+          />
+        </FormSection>
+
         <FormSection title="Exploatare">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label="Kilometraj actual">
@@ -175,6 +314,7 @@ export default function VehicleForm({ vehicle, defaultTariff, onClose, onSaved }
             <Textarea value={form.observatii} onChange={set('observatii')} placeholder="Dotări, daune existente, note interne…" />
           </Field>
         </FormSection>
+        <UploadProgress text={progress} />
         <ErrorText>{error}</ErrorText>
         <button type="submit" className="hidden" />
       </form>
