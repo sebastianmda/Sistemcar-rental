@@ -1,60 +1,100 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import { useToast } from './Toast'
 import { api } from '../lib/api'
 import { friendlyError } from '../lib/errors'
 import { toLocalInput, rentalDays, fmtMoney, fmtDateTime, fmtKm } from '../lib/format'
+import { EQUIPMENT, FEES, FUEL_LEVELS, fuelEighths, fuelLabel } from '../lib/rentalTerms'
 import { Modal, Button, Field, Input, Select, Textarea, FormSection, ErrorText, InfoRow, Card } from './ui'
 import { MediaPicker, UploadProgress } from './Media'
-import { FUEL_LEVELS } from './HandoverForm'
+import { contractLabel } from '../lib/contract'
+
+function Check({ checked, onChange, children }) {
+  return (
+    <label className="flex items-start gap-2.5 text-sm text-slate-700">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300"
+      />
+      <span>{children}</span>
+    </label>
+  )
+}
 
 export default function ReturnForm({ rental, onClose, onDone }) {
   const toast = useToast()
-  const initialReturn = toLocalInput(new Date())
-  const initialDays = rentalDays(rental.data_predare, initialReturn)
+  const handedOver = EQUIPMENT.filter((e) => rental.dotari_predare?.[e.key])
+  const startFuel = fuelEighths(rental.combustibil_predare)
+
   const [form, setForm] = useState({
-    data_returnare: initialReturn,
+    data_returnare: toLocalInput(new Date()),
     km_primire: rental.km_predare ?? '',
-    combustibil_primire: rental.combustibil_predare || 'Plin',
+    combustibil_primire: startFuel !== null ? `${startFuel}/8` : '8/8',
     observatii_primire: '',
-    total_final: initialDays * Number(rental.tarif_zilnic || 0),
+    avarii_noi: false,
+    prezente: Object.fromEntries(handedOver.map((e) => [e.key, true])),
+    alte_lipsuri: '',
+    taxa_curatare: false,
+    taxa_igienizare: false,
+    realimentare: false,
+    cost_combustibil: '',
+    penalizare: '',
+    zi_extra: false,
     trimite_service: false,
   })
-  const [totalEdited, setTotalEdited] = useState(false)
+  const [totalOverride, setTotalOverride] = useState(null)
   const [files, setFiles] = useState([])
   const [saving, setSaving] = useState(false)
   const [progress, setProgress] = useState(null)
   const [error, setError] = useState(null)
 
-  const days = rentalDays(rental.data_predare, form.data_returnare)
-  const computed = days * Number(rental.tarif_zilnic || 0)
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+  const setFlag = (key) => (v) => setForm((f) => ({ ...f, [key]: v }))
+
+  // contract art. 3: late return over 1 hour is penalised; over 4 hours a full day is billed
+  const lateHours = (new Date(form.data_returnare) - new Date(rental.data_returnare_planificata)) / 3600000
+  const calendarDays = rentalDays(rental.data_predare, form.data_returnare)
+  const days = calendarDays + (form.zi_extra && lateHours > 4 ? 1 : 0)
+  const rent = days * Number(rental.tarif_zilnic || 0)
+  const fees =
+    (form.taxa_curatare ? FEES.curatare : 0) +
+    (form.taxa_igienizare ? FEES.igienizare : 0) +
+    (form.realimentare ? FEES.realimentare + (Number(form.cost_combustibil) || 0) : 0) +
+    (Number(form.penalizare) || 0)
+  const computed = rent + fees
+  const total = totalOverride ?? computed
+
   const kmDriven =
     form.km_primire !== '' && rental.km_predare !== null ? Number(form.km_primire) - Number(rental.km_predare) : null
+  const lowerFuel = startFuel !== null && fuelEighths(form.combustibil_primire) < startFuel
 
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
-
-  const changeReturnDate = (e) => {
-    const value = e.target.value
-    setForm((f) => ({
-      ...f,
-      data_returnare: value,
-      total_final: totalEdited ? f.total_final : rentalDays(rental.data_predare, value) * Number(rental.tarif_zilnic || 0),
-    }))
-  }
+  const missing = useMemo(() => {
+    const list = handedOver.filter((e) => !form.prezente[e.key]).map((e) => e.label)
+    if (form.alte_lipsuri.trim()) list.push(form.alte_lipsuri.trim())
+    return list.join(', ')
+  }, [form.prezente, form.alte_lipsuri, handedOver])
 
   const submit = async () => {
     setError(null)
     if (kmDriven !== null && kmDriven < 0) return setError('Kilometrajul la primire nu poate fi mai mic decât la predare.')
+    if (new Date(form.data_returnare) < new Date(rental.data_predare)) return setError('Data primirii este înaintea predării.')
     setSaving(true)
     try {
       setProgress('Se salvează primirea…')
-      await api.finishRental(rental, form)
+      const updated = await api.finishRental(rental, {
+        ...form,
+        dotari_lipsa: missing,
+        zile_facturabile: days,
+        total_final: total,
+      })
       if (files.length) {
         const failed = await api.uploadMany(rental.id, 'primire', files, (i, n) => setProgress(`Se încarcă pozele ${i}/${n}…`))
         if (failed.length) toast(`${failed.length} poză(e) nu s-au încărcat. Le poți adăuga din detaliile închirierii.`, 'error')
       }
       toast('Mașina a fost primită')
-      onDone()
+      onDone(updated)
     } catch (err) {
       setError(friendlyError(err))
     } finally {
@@ -68,7 +108,7 @@ export default function ReturnForm({ rental, onClose, onDone }) {
       open
       onClose={saving ? undefined : onClose}
       title="Primire mașină"
-      subtitle={`${rental.vehicle?.nume_model ?? ''} · ${rental.vehicle?.inmatriculare ?? ''} — ${rental.client?.nume ?? ''}`}
+      subtitle={`Contract ${contractLabel(rental)} · ${rental.vehicle?.inmatriculare ?? ''} — ${rental.client?.nume ?? ''}`}
       size="xl"
       footer={
         <>
@@ -85,63 +125,117 @@ export default function ReturnForm({ rental, onClose, onDone }) {
         <Card className="bg-slate-50 px-4 py-2">
           <InfoRow label="Predată la">{fmtDateTime(rental.data_predare)}</InfoRow>
           <InfoRow label="Km la predare">{fmtKm(rental.km_predare)}</InfoRow>
-          <InfoRow label="Combustibil la predare">{rental.combustibil_predare}</InfoRow>
-          <InfoRow label="Tarif zilnic">{fmtMoney(rental.tarif_zilnic)}</InfoRow>
+          <InfoRow label="Combustibil la predare">{fuelLabel(rental.combustibil_predare)}</InfoRow>
+          <InfoRow label="Tarif zilnic">{fmtMoney(rental.tarif_zilnic)} + TVA</InfoRow>
           {Number(rental.garantie) > 0 && <InfoRow label="Garanție încasată">{fmtMoney(rental.garantie)}</InfoRow>}
         </Card>
 
-        <FormSection title="Starea mașinii la primire">
+        <FormSection title="Starea mașinii la retur">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Field label="Data și ora primirii">
-              <Input type="datetime-local" value={form.data_returnare} onChange={changeReturnDate} />
+            <Field label="Data și ora returului">
+              <Input type="datetime-local" value={form.data_returnare} onChange={set('data_returnare')} />
             </Field>
-            <Field label="Kilometraj la primire" hint={kmDriven !== null && kmDriven >= 0 ? `Parcurși: ${fmtKm(kmDriven)}` : null}>
+            <Field label="Kilometraj la retur" hint={kmDriven !== null && kmDriven >= 0 ? `Parcurși: ${fmtKm(kmDriven)}` : null}>
               <Input type="number" inputMode="numeric" min={0} value={form.km_primire} onChange={set('km_primire')} />
             </Field>
-            <Field label="Nivel combustibil">
+            <Field label="Nivel combustibil" hint={lowerFuel ? 'Mai puțin decât la predare' : null}>
               <Select value={form.combustibil_primire} onChange={set('combustibil_primire')}>
                 {FUEL_LEVELS.map((l) => (
-                  <option key={l}>{l}</option>
+                  <option key={l.value} value={l.value}>
+                    {l.label}
+                  </option>
                 ))}
               </Select>
             </Field>
           </div>
-          <Field label="Observații / daune noi">
+          <Field label="Observații / avarii la retur">
             <Textarea value={form.observatii_primire} onChange={set('observatii_primire')} />
           </Field>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={form.trimite_service}
-              onChange={(e) => setForm((f) => ({ ...f, trimite_service: e.target.checked }))}
-              className="h-4 w-4 rounded border-slate-300"
-            />
-            Trimite mașina în service după primire
-          </label>
+          <Check checked={form.avarii_noi} onChange={setFlag('avarii_noi')}>
+            Există avarii noi (detaliază mai sus)
+          </Check>
         </FormSection>
 
-        <FormSection title="Poze la primire">
+        {handedOver.length > 0 && (
+          <FormSection title="Dotări returnate" description="Debifează ce lipsește față de predare.">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {handedOver.map((e) => (
+                <Check
+                  key={e.key}
+                  checked={Boolean(form.prezente[e.key])}
+                  onChange={(v) => setForm((f) => ({ ...f, prezente: { ...f.prezente, [e.key]: v } }))}
+                >
+                  {e.label}
+                  {e.key === 'chei' && rental.nr_chei ? ` (${rental.nr_chei})` : ''}
+                </Check>
+              ))}
+            </div>
+            <Field label="Alte lipsuri">
+              <Input value={form.alte_lipsuri} onChange={set('alte_lipsuri')} />
+            </Field>
+          </FormSection>
+        )}
+
+        <FormSection title="Poze la retur">
           <MediaPicker files={files} onChange={setFiles} />
         </FormSection>
 
-        <FormSection title="Decont">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Calculat: {days} {days === 1 ? 'zi' : 'zile'} × {fmtMoney(rental.tarif_zilnic)} = <b className="text-slate-900">{fmtMoney(computed)}</b>
-            </div>
-            <Field label="Total de plată (RON)" hint="Poți modifica (reduceri, daune, combustibil lipsă)">
-              <Input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                value={form.total_final}
-                onChange={(e) => {
-                  setTotalEdited(true)
-                  set('total_final')(e)
-                }}
-              />
-            </Field>
+        <FormSection title="Taxe suplimentare (conform contract)">
+          <div className="space-y-2.5">
+            <Check checked={form.taxa_curatare} onChange={setFlag('taxa_curatare')}>
+              Curățenie — {fmtMoney(FEES.curatare)}
+            </Check>
+            <Check checked={form.taxa_igienizare} onChange={setFlag('taxa_igienizare')}>
+              Miros persistent / igienizare — {fmtMoney(FEES.igienizare)}
+            </Check>
+            <Check checked={form.realimentare} onChange={setFlag('realimentare')}>
+              Alimentare de către Locator — {fmtMoney(FEES.realimentare)}
+            </Check>
+            {form.realimentare && (
+              <Field label="Cost combustibil alimentat (RON, opțional)" className="max-w-xs pl-6">
+                <Input type="number" inputMode="decimal" min={0} value={form.cost_combustibil} onChange={set('cost_combustibil')} />
+              </Field>
+            )}
+            {lateHours > 1 && (
+              <div className="space-y-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                <div>
+                  Retur cu <b>{Math.floor(lateHours)} h {Math.round((lateHours % 1) * 60)} min</b> după ora convenită. Conform contractului,
+                  întârzierea de peste 1 oră se penalizează{lateHours > 4 ? ', iar peste 4 ore se facturează o zi întreagă' : ''}.
+                </div>
+                {lateHours > 4 && (
+                  <Check checked={form.zi_extra} onChange={setFlag('zi_extra')}>
+                    Facturează o zi în plus ({calendarDays} zile calendaristice + 1)
+                  </Check>
+                )}
+                <Field label="Penalizare întârziere (RON)" className="max-w-xs">
+                  <Input type="number" inputMode="decimal" min={0} value={form.penalizare} onChange={set('penalizare')} />
+                </Field>
+              </div>
+            )}
           </div>
+        </FormSection>
+
+        <FormSection title="Decont">
+          <Card className="px-4 py-2">
+            <InfoRow label="Zile facturabile">{days}</InfoRow>
+            <InfoRow label={`Chirie ${days} × ${fmtMoney(rental.tarif_zilnic)}`}>{fmtMoney(rent)}</InfoRow>
+            {fees > 0 && <InfoRow label="Taxe suplimentare">{fmtMoney(fees)}</InfoRow>}
+            <InfoRow label="Total calculat (fără TVA)">
+              <span className="text-base">{fmtMoney(computed)}</span>
+            </InfoRow>
+          </Card>
+          <Field label="Total de încasat (RON, fără TVA)" hint="Se completează singur; îl poți modifica (reduceri, daune).">
+            <Input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              value={total}
+              onChange={(e) => setTotalOverride(e.target.value === '' ? '' : Number(e.target.value))}
+            />
+          </Field>
+          <Check checked={form.trimite_service} onChange={setFlag('trimite_service')}>
+            Trimite mașina în service după retur
+          </Check>
         </FormSection>
 
         <UploadProgress text={progress} />

@@ -12,7 +12,7 @@ const VEHICLE_NUMBERS = ['an_fabricatie', 'capacitate_pasageri', 'km_actuali', '
 
 const CLIENT_FIELDS = [
   'nume', 'telefon', 'email', 'cnp', 'act_identitate', 'adresa',
-  'permis_numar', 'permis_expira', 'firma', 'cui', 'observatii',
+  'permis_numar', 'permis_categorie', 'permis_expira', 'firma', 'cui', 'observatii',
 ]
 
 // keeps only known columns; empty strings become null (empty dates used to crash inserts)
@@ -39,7 +39,8 @@ async function run(query) {
 }
 
 const RENTAL_SELECT =
-  '*, vehicle:vehicles(id, nume_model, inmatriculare, km_actuali), client:clients(id, nume, telefon, email, permis_expira)'
+  '*, vehicle:vehicles(id, nume_model, inmatriculare, km_actuali, an_fabricatie, vin), ' +
+  'client:clients(id, nume, telefon, email, cnp, act_identitate, adresa, permis_numar, permis_categorie, permis_expira)'
 
 export const api = {
   // ---------- vehicles ----------
@@ -106,6 +107,13 @@ export const api = {
           km_predare: data.km_predare === '' ? null : Number(data.km_predare),
           combustibil_predare: data.combustibil_predare || null,
           observatii_predare: data.observatii_predare?.trim() || null,
+          loc_predare: data.loc_predare?.trim() || 'sediul Locatorului',
+          sofer2_nume: data.sofer2_nume?.trim() || null,
+          sofer2_permis: data.sofer2_permis?.trim() || null,
+          nr_chei: data.nr_chei === '' ? null : Number(data.nr_chei),
+          dotari_predare: data.dotari_predare || null,
+          numar_contract: data.numar_contract?.trim() || null,
+          data_contract: data.data_contract || null,
         })
         .select(RENTAL_SELECT)
         .single()
@@ -127,6 +135,13 @@ export const api = {
           combustibil_primire: data.combustibil_primire || null,
           observatii_primire: data.observatii_primire?.trim() || null,
           total_final: Number(data.total_final) || 0,
+          zile_facturabile: Number(data.zile_facturabile) || null,
+          avarii_noi: Boolean(data.avarii_noi),
+          dotari_lipsa: data.dotari_lipsa?.trim() || null,
+          taxa_curatare: Boolean(data.taxa_curatare),
+          taxa_igienizare: Boolean(data.taxa_igienizare),
+          realimentare: Boolean(data.realimentare),
+          cost_combustibil: data.realimentare ? Number(data.cost_combustibil) || 0 : 0,
         })
         .eq('id', rental.id)
         .select(RENTAL_SELECT)
@@ -158,6 +173,16 @@ export const api = {
     return data || { id: 'default_tariff', tarif_zilnic_default: 150 }
   },
 
+  saveSettings(fields) {
+    return run(
+      supabase
+        .from('settings')
+        .upsert({ id: 'default_tariff', ...fields, updated_at: new Date().toISOString() })
+        .select()
+        .single()
+    )
+  },
+
   saveDefaultTariff(value) {
     return run(
       supabase
@@ -166,6 +191,40 @@ export const api = {
         .select()
         .single()
     )
+  },
+
+  // ---------- contract ----------
+  saveRentalFields(id, fields) {
+    return run(supabase.from('rentals').update(fields).eq('id', id).select(RENTAL_SELECT).single())
+  },
+
+  // stores the signed contract PDF and links it to the rental
+  async uploadContract(rental, blob) {
+    const path = `contracts/${rental.id}/contract-${Date.now()}.pdf`
+    const { error } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: 'application/pdf', upsert: false })
+    if (error) throw error
+    return api.saveRentalFields(rental.id, { contract_pdf: path, contract_semnat_la: new Date().toISOString() })
+  },
+
+  async countMedia(rentalId) {
+    const rows = await run(supabase.from('rental_media').select('etapa').eq('rental_id', rentalId))
+    return {
+      predare: rows.filter((r) => r.etapa === 'predare').length,
+      primire: rows.filter((r) => r.etapa === 'primire').length,
+    }
+  },
+
+  async contractBlob(path) {
+    const url = (await api.signedUrls([path]))[path]
+    if (!url) throw new Error('Contractul salvat nu a fost găsit.')
+    const res = await fetch(url)
+    if (!res.ok) throw new Error('Contractul nu a putut fi descărcat.')
+    return res.blob()
+  },
+
+  async contractUrl(path) {
+    const urls = await api.signedUrls([path])
+    return urls[path]
   },
 
   // ---------- photos ----------

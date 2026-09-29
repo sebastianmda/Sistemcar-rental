@@ -8,6 +8,7 @@ export const EMPTY_CLIENT = {
   act_identitate: '',
   adresa: '',
   permis_numar: '',
+  permis_categorie: 'B',
   permis_expira: '',
   firma: '',
   cui: '',
@@ -45,18 +46,23 @@ export default function ClientFields({ form, setForm, compact }) {
         <Input inputMode="numeric" maxLength={13} value={form.cnp} onChange={set('cnp')} />
       </Field>
       <Field label="Act identitate (serie, nr.)">
-        <Input value={form.act_identitate} onChange={set('act_identitate')} placeholder="ex: XH 123456" />
+        <Input value={form.act_identitate} onChange={set('act_identitate')} placeholder="seria și nr., ex: XH 123456" />
       </Field>
-      <Field label="Nr. permis conducere">
-        <Input value={form.permis_numar} onChange={set('permis_numar')} />
-      </Field>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Nr. permis conducere" className="col-span-2">
+          <Input value={form.permis_numar} onChange={set('permis_numar')} />
+        </Field>
+        <Field label="Categoria">
+          <Input value={form.permis_categorie} onChange={set('permis_categorie')} placeholder="B" />
+        </Field>
+      </div>
       <Field label="Permis valabil până la">
         <Input type="date" value={form.permis_expira} onChange={set('permis_expira')} />
       </Field>
       <Field label="Email">
         <Input type="email" value={form.email} onChange={set('email')} />
       </Field>
-      <Field label="Adresă">
+      <Field label="Domiciliu (adresa din buletin)">
         <Input value={form.adresa} onChange={set('adresa')} />
       </Field>
       {!compact && (

@@ -7,8 +7,11 @@ import { useToast } from './Toast'
 import { Modal, Button, Card, InfoRow, Plate, Spinner, ErrorText } from './ui'
 import { RentalStatus, LicenseWarning } from './StatusBits'
 import { MediaGallery } from './Media'
+import { ContractCard } from './Contract'
+import { contractLabel } from '../lib/contract'
+import { fuelLabel, FEES } from '../lib/rentalTerms'
 
-export default function RentalDetail({ rental, onClose, onReturn, onChanged }) {
+export default function RentalDetail({ rental, onClose, onReturn, onChanged, onSign, onRefresh }) {
   const toast = useToast()
   const [media, setMedia] = useState(null)
   const [mediaError, setMediaError] = useState(null)
@@ -47,7 +50,7 @@ export default function RentalDetail({ rental, onClose, onReturn, onChanged }) {
       open
       onClose={onClose}
       title={`${rental.vehicle?.nume_model ?? 'Vehicul'}`}
-      subtitle={`Închiriere din ${fmtDateTime(rental.data_predare)}`}
+      subtitle={`Contract ${contractLabel(rental)} · din ${fmtDateTime(rental.data_predare)}`}
       size="xl"
       footer={
         active ? (
@@ -73,6 +76,8 @@ export default function RentalDetail({ rental, onClose, onReturn, onChanged }) {
           <LicenseWarning client={rental.client} />
         </div>
 
+        {rental.status !== 'anulata' && <ContractCard rental={rental} onSign={onSign} onChanged={onRefresh} />}
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-slate-500">Client</h4>
@@ -92,14 +97,14 @@ export default function RentalDetail({ rental, onClose, onReturn, onChanged }) {
             <h4 className="mb-1 text-sm font-semibold text-slate-500">Predare</h4>
             <InfoRow label="Data">{fmtDateTime(rental.data_predare)}</InfoRow>
             <InfoRow label="Km">{fmtKm(rental.km_predare)}</InfoRow>
-            <InfoRow label="Combustibil">{rental.combustibil_predare}</InfoRow>
+            <InfoRow label="Combustibil">{fuelLabel(rental.combustibil_predare)}</InfoRow>
             <InfoRow label="Retur planificat">{fmtDateTime(rental.data_returnare_planificata)}</InfoRow>
           </Card>
           <Card className="px-4 py-3">
             <h4 className="mb-1 text-sm font-semibold text-slate-500">Primire</h4>
             <InfoRow label="Data">{fmtDateTime(rental.data_returnare)}</InfoRow>
             <InfoRow label="Km">{fmtKm(rental.km_primire)}</InfoRow>
-            <InfoRow label="Combustibil">{rental.combustibil_primire}</InfoRow>
+            <InfoRow label="Combustibil">{rental.combustibil_primire ? fuelLabel(rental.combustibil_primire) : '—'}</InfoRow>
             <InfoRow label="Parcurși">
               {rental.km_primire !== null && rental.km_predare !== null ? fmtKm(rental.km_primire - rental.km_predare) : '—'}
             </InfoRow>
@@ -108,9 +113,15 @@ export default function RentalDetail({ rental, onClose, onReturn, onChanged }) {
 
         <Card className="px-4 py-3">
           <InfoRow label="Tarif zilnic">{fmtMoney(rental.tarif_zilnic)}</InfoRow>
-          <InfoRow label={active ? 'Zile (planificat)' : 'Zile'}>{days}</InfoRow>
+          <InfoRow label={active ? 'Zile (planificat)' : 'Zile facturabile'}>{rental.zile_facturabile ?? days}</InfoRow>
           <InfoRow label="Garanție">{fmtMoney(rental.garantie)}</InfoRow>
-          <InfoRow label={active ? 'Total estimat' : 'Total încasat'}>
+          {rental.taxa_curatare && <InfoRow label="Curățenie">{fmtMoney(FEES.curatare)}</InfoRow>}
+          {rental.taxa_igienizare && <InfoRow label="Igienizare">{fmtMoney(FEES.igienizare)}</InfoRow>}
+          {rental.realimentare && (
+            <InfoRow label="Alimentare de către Locator">{fmtMoney(FEES.realimentare + Number(rental.cost_combustibil || 0))}</InfoRow>
+          )}
+          {rental.dotari_lipsa && <InfoRow label="Dotări lipsă">{rental.dotari_lipsa}</InfoRow>}
+          <InfoRow label={active ? 'Total estimat (fără TVA)' : 'Total (fără TVA)'}>
             <span className="text-base">{fmtMoney(active ? days * rental.tarif_zilnic : rental.total_final)}</span>
           </InfoRow>
         </Card>

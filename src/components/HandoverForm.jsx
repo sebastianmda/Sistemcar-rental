@@ -10,10 +10,49 @@ import { Modal, Button, Field, Input, Select, Textarea, FormSection, ErrorText, 
 import ClientFields, { EMPTY_CLIENT, validateClient } from './ClientFields'
 import { MediaPicker, UploadProgress } from './Media'
 
-export const FUEL_LEVELS = ['Rezervă', '1/4', '1/2', '3/4', 'Plin']
+import { EQUIPMENT, FUEL_LEVELS, defaultEquipment } from '../lib/rentalTerms'
+import { suggestContractNumber } from '../lib/contract'
+
+const CONTRACT_CLIENT_FIELDS = [
+  ['cnp', 'CNP'],
+  ['act_identitate', 'seria/nr. buletin'],
+  ['adresa', 'domiciliu'],
+  ['permis_numar', 'nr. permis'],
+]
+
+export function EquipmentChecklist({ value, onChange, keys }) {
+  return (
+    <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+      {EQUIPMENT.filter((e) => !keys || keys.includes(e.key)).map((e) => {
+        const on = Boolean(value[e.key])
+        return (
+          <div key={e.key} className="flex items-center justify-between gap-3 px-3 py-2">
+            <span className="text-sm text-slate-700">{e.label}</span>
+            <div className="inline-flex overflow-hidden rounded-lg ring-1 ring-slate-300">
+              <button
+                type="button"
+                onClick={() => onChange({ ...value, [e.key]: true })}
+                className={`px-3 py-1 text-sm font-medium ${on ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600'}`}
+              >
+                Da
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange({ ...value, [e.key]: false })}
+                className={`px-3 py-1 text-sm font-medium ${!on ? 'bg-red-600 text-white' : 'bg-white text-slate-600'}`}
+              >
+                Nu
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
-  const { vehicles, clients, defaultTariff } = useData()
+  const { vehicles, clients, rentals, defaultTariff } = useData()
   const toast = useToast()
   const available = vehicles.filter((v) => v.status === 'Disponibil')
 
@@ -26,9 +65,17 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
     tarif_zilnic: firstVehicle?.tarif_zilnic ?? defaultTariff,
     garantie: '',
     km_predare: firstVehicle?.km_actuali ?? '',
-    combustibil_predare: 'Plin',
+    combustibil_predare: '8/8',
     observatii_predare: '',
+    loc_predare: 'sediul Locatorului',
+    sofer2_nume: '',
+    sofer2_permis: '',
+    nr_chei: 1,
+    dotari_predare: defaultEquipment(),
+    numar_contract: '',
+    data_contract: '',
   })
+  const suggestedNr = useMemo(() => suggestContractNumber(rentals), [rentals])
   const [clientMode, setClientMode] = useState(clients.length ? 'existing' : 'new')
   const [clientId, setClientId] = useState('')
   const [clientSearch, setClientSearch] = useState('')
@@ -60,6 +107,10 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
   }, [clients, clientSearch])
   const selectedClient = clients.find((c) => c.id === clientId)
   const licenseDays = daysUntil(clientMode === 'existing' ? selectedClient?.permis_expira : newClient.permis_expira)
+  const contractClient = clientMode === 'existing' ? selectedClient : newClient
+  const missingForContract = contractClient
+    ? CONTRACT_CLIENT_FIELDS.filter(([k]) => !String(contractClient[k] || '').trim()).map(([, label]) => label)
+    : []
 
   const submit = async () => {
     setError(null)
@@ -127,6 +178,21 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
       }
     >
       <div className="space-y-8">
+        <FormSection title="Contract" description="Completează-le tu. Dacă le lași goale, rămân de scris de mână pe contract.">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Nr. contract">
+              <Input
+                value={form.numar_contract}
+                onChange={set('numar_contract')}
+                placeholder={suggestedNr ? `ex: ${suggestedNr}` : 'ex: 1'}
+              />
+            </Field>
+            <Field label="Data contractului">
+              <Input type="date" value={form.data_contract} onChange={set('data_contract')} />
+            </Field>
+          </div>
+        </FormSection>
+
         <FormSection title="1. Vehicul">
           <Select value={form.vehicle_id} onChange={(e) => chooseVehicle(e.target.value)}>
             {available.map((v) => (
@@ -180,6 +246,20 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
           {licenseDays !== null && licenseDays < 0 && (
             <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Atenție: permisul clientului este expirat.</div>
           )}
+          {(clientMode === 'new' || selectedClient) && missingForContract.length > 0 && (
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Pentru contract lipsesc: {missingForContract.join(', ')}.{' '}
+              {clientMode === 'existing' ? 'Le poți completa din Clienți sau de mână pe contract.' : 'Rămân de completat de mână pe contract.'}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Șofer autorizat suplimentar" hint="Opțional">
+              <Input value={form.sofer2_nume} onChange={set('sofer2_nume')} placeholder="Nume și prenume" />
+            </Field>
+            <Field label="Nr. permis șofer suplimentar">
+              <Input value={form.sofer2_permis} onChange={set('sofer2_permis')} />
+            </Field>
+          </div>
         </FormSection>
 
         <FormSection title="3. Perioadă și preț">
@@ -187,19 +267,22 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
             <Field label="Data și ora predării">
               <Input type="datetime-local" value={form.data_predare} onChange={set('data_predare')} />
             </Field>
-            <Field label="Returnare planificată">
+            <Field label="Returnare convenită">
               <Input type="datetime-local" value={form.data_returnare_planificata} onChange={set('data_returnare_planificata')} />
             </Field>
-            <Field label="Tarif zilnic (RON)">
+            <Field label="Tarif zilnic (RON, fără TVA)">
               <Input type="number" inputMode="decimal" min={0} value={form.tarif_zilnic} onChange={set('tarif_zilnic')} />
             </Field>
             <Field label="Garanție (RON)">
               <Input type="number" inputMode="decimal" min={0} value={form.garantie} onChange={set('garantie')} placeholder="0" />
             </Field>
+            <Field label="Locul predării" className="sm:col-span-2">
+              <Input value={form.loc_predare} onChange={set('loc_predare')} />
+            </Field>
           </div>
           <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3 text-sm">
             <span className="text-slate-600">
-              Estimat: {days} {days === 1 ? 'zi' : 'zile'} × {fmtMoney(form.tarif_zilnic)}
+              Estimat: {days} {days === 1 ? 'zi' : 'zile'} calendaristice × {fmtMoney(form.tarif_zilnic)} + TVA
             </span>
             <span className="text-base font-semibold text-slate-900">{fmtMoney(estimate)}</span>
           </div>
@@ -213,11 +296,20 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
             <Field label="Nivel combustibil">
               <Select value={form.combustibil_predare} onChange={set('combustibil_predare')}>
                 {FUEL_LEVELS.map((l) => (
-                  <option key={l}>{l}</option>
+                  <option key={l.value} value={l.value}>
+                    {l.label}
+                  </option>
                 ))}
               </Select>
             </Field>
           </div>
+          <div>
+            <div className="mb-1 text-sm font-medium text-slate-700">Dotări și documente predate (Anexa 1)</div>
+            <EquipmentChecklist value={form.dotari_predare} onChange={(v) => setForm((f) => ({ ...f, dotari_predare: v }))} />
+          </div>
+          <Field label="Număr chei predate" className="max-w-[10rem]">
+            <Input type="number" inputMode="numeric" min={0} value={form.nr_chei} onChange={set('nr_chei')} />
+          </Field>
           <Field label="Observații / daune existente">
             <Textarea value={form.observatii_predare} onChange={set('observatii_predare')} placeholder="ex: zgârietură bară spate dreapta" />
           </Field>

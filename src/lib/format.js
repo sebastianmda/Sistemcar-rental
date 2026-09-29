@@ -60,11 +60,15 @@ export function addDays(date, days) {
   return d
 }
 
-// rental days, counted per started 24h, with 1 hour of tolerance, minimum 1
+// Billable days as in the contract: calendar days, counting both the handover day and
+// the return day, regardless of the hour. Minimum 1.
 export function rentalDays(start, end) {
-  const ms = new Date(end) - new Date(start)
-  if (!isFinite(ms) || ms <= 0) return 1
-  return Math.max(1, Math.ceil((ms - 60 * 60 * 1000) / DAY))
+  const a = new Date(start)
+  const b = new Date(end)
+  if (isNaN(a) || isNaN(b)) return 1
+  const da = new Date(a.getFullYear(), a.getMonth(), a.getDate())
+  const db = new Date(b.getFullYear(), b.getMonth(), b.getDate())
+  return Math.max(1, Math.round((db - da) / DAY) + 1)
 }
 
 export function daysLabel(days) {
@@ -78,4 +82,16 @@ export function daysLabel(days) {
 
 export function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many}`
+}
+
+export function fmtTime(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  return isNaN(d) ? '' : d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })
+}
+
+export function fmtDateOnly(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  return isNaN(d) ? '' : d.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }

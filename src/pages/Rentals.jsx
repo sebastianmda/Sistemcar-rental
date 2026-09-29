@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus, KeyRound, Phone, CalendarClock, CheckCircle2, Eye } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { fmtDateTime, fmtMoney } from '../lib/format'
-import { Button, Card, PageHeader, EmptyState, Tabs, Plate, SearchInput } from '../components/ui'
+import { Button, Card, PageHeader, EmptyState, Tabs, Plate, SearchInput, Badge } from '../components/ui'
 import { RentalStatus } from '../components/StatusBits'
 import HandoverForm from '../components/HandoverForm'
 import ReturnForm from '../components/ReturnForm'
 import RentalDetail from '../components/RentalDetail'
+import { ContractSign, contractStatus } from '../components/Contract'
+import { contractLabel } from '../lib/contract'
 
 export default function Rentals({ params }) {
   const { rentals, reload } = useData()
@@ -15,6 +17,7 @@ export default function Rentals({ params }) {
   const [handover, setHandover] = useState(null) // { vehicleId }
   const [returning, setReturning] = useState(null)
   const [detailId, setDetailId] = useState(null)
+  const [signing, setSigning] = useState(null) // { rental, etapa }
 
   useEffect(() => {
     if (params?.newForVehicle || params?.newRental) setHandover({ vehicleId: params.newForVehicle })
@@ -83,7 +86,14 @@ export default function Rentals({ params }) {
                     <Plate>{r.vehicle?.inmatriculare}</Plate>
                   </div>
                 </div>
-                <RentalStatus rental={r} />
+                <div className="flex flex-col items-end gap-1">
+                  <RentalStatus rental={r} />
+                  {r.status !== 'anulata' && (
+                    <Badge tone={contractStatus(r).tone}>
+                      Contract {contractLabel(r)} · {contractStatus(r).label}
+                    </Badge>
+                  )}
+                </div>
               </div>
               <div className="mt-3 space-y-1.5 text-sm">
                 <div className="flex items-center justify-between gap-2">
@@ -128,6 +138,7 @@ export default function Rentals({ params }) {
             await reload()
             setTab('active')
             setDetailId(rental.id)
+            setSigning({ rental, etapa: 'predare' })
           }}
         />
       )}
@@ -136,26 +147,37 @@ export default function Rentals({ params }) {
         <ReturnForm
           rental={returning}
           onClose={() => setReturning(null)}
-          onDone={async () => {
+          onDone={async (updated) => {
             const id = returning.id
             setReturning(null)
             setDetailId(null)
             await reload()
             setTab('history')
             setDetailId(id)
+            if (updated?.semnatura_locatar_predare) setSigning({ rental: updated, etapa: 'retur' })
           }}
         />
       )}
 
-      {detail && !returning && (
+      {detail && !returning && !signing && (
         <RentalDetail
           rental={detail}
           onClose={() => setDetailId(null)}
           onReturn={() => setReturning(detail)}
+          onSign={(etapa) => setSigning({ rental: detail, etapa })}
+          onRefresh={reload}
           onChanged={async () => {
             setDetailId(null)
             await reload()
           }}
+        />
+      )}
+      {signing && (
+        <ContractSign
+          rental={signing.rental}
+          etapa={signing.etapa}
+          onClose={() => setSigning(null)}
+          onSigned={() => reload()}
         />
       )}
     </>
