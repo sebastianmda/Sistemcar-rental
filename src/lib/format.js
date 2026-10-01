@@ -23,18 +23,21 @@ export function daysUntil(value) {
   return Math.round((date - todayMidnight()) / DAY)
 }
 
+const p2 = (n) => String(n).padStart(2, '0')
+const dmy = (d) => `${p2(d.getDate())}.${p2(d.getMonth() + 1)}.${d.getFullYear()}`
+const hm = (d) => `${p2(d.getHours())}:${p2(d.getMinutes())}`
+
+// always day.month.year (27.09.2026), whatever the phone/browser language
 export function fmtDate(value) {
   const date = parseDateOnly(value)
-  return date ? date.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
+  return date ? dmy(date) : '—'
 }
 
 export function fmtDateTime(value) {
   if (!value) return '—'
   const date = new Date(value)
   if (isNaN(date)) return '—'
-  return date.toLocaleString('ro-RO', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
+  return `${dmy(date)}, ${hm(date)}`
 }
 
 export function fmtMoney(value) {
@@ -87,11 +90,11 @@ export function plural(n, one, many) {
 export function fmtTime(value) {
   if (!value) return ''
   const d = new Date(value)
-  return isNaN(d) ? '' : d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })
+  return isNaN(d) ? '' : hm(d)
 }
 
 export function fmtDateOnly(value) {
   if (!value) return ''
   const d = new Date(value)
-  return isNaN(d) ? '' : d.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return isNaN(d) ? '' : dmy(d)
 }

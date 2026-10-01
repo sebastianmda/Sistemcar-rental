@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Car, CheckCircle2, KeyRound, Wrench, Wallet, Bell, ShieldX, ShieldAlert, Clock, ShieldQuestion, Plus, ChevronRight } from 'lucide-react'
 import { useData } from '../context/DataContext'
-import { fmtMoney, fmtDateTime } from '../lib/format'
+import { fmtMoney, fmtDateTime, fmtDateOnly } from '../lib/format'
 import { Button, Card, PageHeader, Plate, cx } from '../components/ui'
 import { RentalStatus } from '../components/StatusBits'
 
@@ -44,13 +44,15 @@ export default function Dashboard({ navigate }) {
       .reduce((sum, r) => sum + Number(r.total_final || 0), 0)
   }, [rentals])
 
-  const today = new Date().toLocaleDateString('ro-RO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const now = new Date()
+  const weekday = ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'][now.getDay()]
+  const today = `${weekday}, ${fmtDateOnly(now)}`
 
   return (
     <>
       <PageHeader
         title="Panou de control"
-        subtitle={today.charAt(0).toUpperCase() + today.slice(1)}
+        subtitle={today}
         actions={
           <Button variant="success" icon={Plus} onClick={() => navigate('rentals', { newRental: true })}>
             Predare nouă

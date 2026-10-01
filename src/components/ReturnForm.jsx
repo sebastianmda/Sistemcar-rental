@@ -8,6 +8,7 @@ import { EQUIPMENT, FEES, FUEL_LEVELS, fuelEighths, fuelLabel } from '../lib/ren
 import { Modal, Button, Field, Input, Select, Textarea, FormSection, ErrorText, InfoRow, Card } from './ui'
 import { MediaPicker, UploadProgress } from './Media'
 import { contractLabel } from '../lib/contract'
+import { DateInput, DateTimeInput } from './DateInputs'
 
 function Check({ checked, onChange, children }) {
   return (
@@ -78,6 +79,7 @@ export default function ReturnForm({ rental, onClose, onDone }) {
 
   const submit = async () => {
     setError(null)
+    if (!form.data_returnare) return setError('Completează data și ora returului (ex: 27.09.2026 și 14:30).')
     if (kmDriven !== null && kmDriven < 0) return setError('Kilometrajul la primire nu poate fi mai mic decât la predare.')
     if (new Date(form.data_returnare) < new Date(rental.data_predare)) return setError('Data primirii este înaintea predării.')
     setSaving(true)
@@ -133,7 +135,7 @@ export default function ReturnForm({ rental, onClose, onDone }) {
         <FormSection title="Starea mașinii la retur">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label="Data și ora returului">
-              <Input type="datetime-local" value={form.data_returnare} onChange={set('data_returnare')} />
+              <DateTimeInput value={form.data_returnare} onChange={set('data_returnare')} />
             </Field>
             <Field label="Kilometraj la retur" hint={kmDriven !== null && kmDriven >= 0 ? `Parcurși: ${fmtKm(kmDriven)}` : null}>
               <Input type="number" inputMode="numeric" min={0} value={form.km_primire} onChange={set('km_primire')} />

@@ -1,4 +1,5 @@
 import { Field, Input, Textarea } from './ui'
+import { DateInput } from './DateInputs'
 
 export const EMPTY_CLIENT = {
   nume: '',
@@ -57,7 +58,7 @@ export default function ClientFields({ form, setForm, compact }) {
         </Field>
       </div>
       <Field label="Permis valabil până la">
-        <Input type="date" value={form.permis_expira} onChange={set('permis_expira')} />
+        <DateInput value={form.permis_expira} onChange={set('permis_expira')} />
       </Field>
       <Field label="Email">
         <Input type="email" value={form.email} onChange={set('email')} />

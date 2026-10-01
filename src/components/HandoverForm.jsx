@@ -12,6 +12,7 @@ import { MediaPicker, UploadProgress } from './Media'
 
 import { EQUIPMENT, FUEL_LEVELS, defaultEquipment } from '../lib/rentalTerms'
 import { suggestContractNumber } from '../lib/contract'
+import { DateInput, DateTimeInput } from './DateInputs'
 
 const CONTRACT_CLIENT_FIELDS = [
   ['cnp', 'CNP'],
@@ -121,6 +122,8 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
       const problem = validateClient(newClient)
       if (problem) return setError(problem)
     }
+    if (!form.data_predare || !form.data_returnare_planificata)
+      return setError('Completează data și ora predării și a returnării (ex: 27.09.2026 și 14:30).')
     if (new Date(form.data_returnare_planificata) <= new Date(form.data_predare))
       return setError('Data returnării trebuie să fie după data predării.')
 
@@ -188,7 +191,7 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
               />
             </Field>
             <Field label="Data contractului">
-              <Input type="date" value={form.data_contract} onChange={set('data_contract')} />
+              <DateInput value={form.data_contract} onChange={set('data_contract')} />
             </Field>
           </div>
         </FormSection>
@@ -265,10 +268,10 @@ export default function HandoverForm({ initialVehicleId, onClose, onDone }) {
         <FormSection title="3. Perioadă și preț">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Data și ora predării">
-              <Input type="datetime-local" value={form.data_predare} onChange={set('data_predare')} />
+              <DateTimeInput value={form.data_predare} onChange={set('data_predare')} />
             </Field>
             <Field label="Returnare convenită">
-              <Input type="datetime-local" value={form.data_returnare_planificata} onChange={set('data_returnare_planificata')} />
+              <DateTimeInput value={form.data_returnare_planificata} onChange={set('data_returnare_planificata')} />
             </Field>
             <Field label="Tarif zilnic (RON, fără TVA)">
               <Input type="number" inputMode="decimal" min={0} value={form.tarif_zilnic} onChange={set('tarif_zilnic')} />

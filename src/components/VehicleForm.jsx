@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { friendlyError } from '../lib/errors'
 import { useToast } from './Toast'
 import { PhotoGrid, PhotoInput, UploadProgress, useLocalPreviews } from './Media'
+import { DateInput } from './DateInputs'
 
 export const PHOTO_CATEGORIES = [
   { value: 'document', label: 'Documente', hint: 'Talon, poliță RCA, ITP, rovinietă, CASCO' },
@@ -255,16 +256,16 @@ export default function VehicleForm({ vehicle, photoUrl, defaultTariff, onClose,
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="RCA valabil până la">
-              <Input type="date" value={form.rca_expira} onChange={set('rca_expira')} />
+              <DateInput value={form.rca_expira} onChange={set('rca_expira')} />
             </Field>
             <Field label="ITP valabil până la">
-              <Input type="date" value={form.itp_expira} onChange={set('itp_expira')} />
+              <DateInput value={form.itp_expira} onChange={set('itp_expira')} />
             </Field>
             <Field label="Rovinietă valabilă până la">
-              <Input type="date" value={form.rovinieta_expira} onChange={set('rovinieta_expira')} />
+              <DateInput value={form.rovinieta_expira} onChange={set('rovinieta_expira')} />
             </Field>
             <Field label="CASCO valabil până la" hint="Opțional">
-              <Input type="date" value={form.casco_expira} onChange={set('casco_expira')} />
+              <DateInput value={form.casco_expira} onChange={set('casco_expira')} />
             </Field>
           </div>
         </FormSection>

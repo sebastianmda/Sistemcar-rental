@@ -9,6 +9,7 @@ import { fmtDateTime } from '../lib/format'
 import { Modal, Button, Card, Badge, ErrorText, Field, Input } from './ui'
 import SignaturePad from './SignaturePad'
 import { UploadProgress } from './Media'
+import { DateInput } from './DateInputs'
 
 function useContractTools() {
   const { settings } = useData()
@@ -171,7 +172,7 @@ export function ContractSign({ rental, etapa, onClose, onSigned }) {
             <Input value={numar} onChange={(e) => setNumar(e.target.value)} placeholder={suggestedNr ? `ex: ${suggestedNr}` : 'ex: 1'} />
           </Field>
           <Field label="Data contractului">
-            <Input type="date" value={dataContract} onChange={(e) => setDataContract(e.target.value)} />
+            <DateInput value={dataContract} onChange={(e) => setDataContract(e.target.value)} />
           </Field>
         </div>
 
@@ -257,7 +258,7 @@ function ContractNumberEditor({ rental, onClose, onSaved }) {
           <Input value={numar} onChange={(e) => setNumar(e.target.value)} placeholder={suggestedNr ? `ex: ${suggestedNr}` : 'ex: 1'} />
         </Field>
         <Field label="Data contractului">
-          <Input type="date" value={dataContract} onChange={(e) => setDataContract(e.target.value)} />
+          <DateInput value={dataContract} onChange={(e) => setDataContract(e.target.value)} />
         </Field>
       </div>
       {rental.contract_pdf && (

@@ -1,4 +1,4 @@
-# Sistemcar Rent a Car — v7
+# Sistemcar Rent a Car — v8
 
 Aplicație de gestionare flotă și închirieri: vehicule cu RCA / ITP / rovinietă / CASCO și alerte la 30 și 7 zile,
 predare și primire cu fotografii, galerie foto pe fiecare mașină, contract de închiriere generat automat și semnat pe ecran, clienți, încasări.

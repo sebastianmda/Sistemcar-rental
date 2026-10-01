@@ -8,8 +8,27 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* the page only moves up and down on the phone, never sideways */
+html {
+  overflow-x: hidden; /* applies to the whole screen */
+  overscroll-behavior-x: none;
+}
+
+body,
+#root {
+  max-width: 100%;
+  overflow-x: clip; /* clip (not hidden) keeps the sticky top bar working */
+}
+
 body {
   @apply bg-slate-50 font-sans text-slate-900 antialiased;
+  overflow-wrap: break-word;
+}
+
+img,
+video,
+canvas {
+  max-width: 100%;
 }
 
 /* iOS: inputs under 16px trigger zoom — keep them readable */
